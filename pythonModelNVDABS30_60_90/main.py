@@ -10,7 +10,7 @@ def main():
     print("--- Black-Scholes Monte Carlo Simulation (Multi-Ticker & Visualization) ---")
     
     # User Inputs
-    ticker_symbols = ["NVDA", "AAPL", "MSFT"] # List of tickers to analyze
+    ticker_symbols = ["JPM", "PLTR", "AMD", "RGTI", "NVDA", "TSLA", "LCID", "RIVN", "ACAD", "WVE", "QS",   "AAP", "MA", "JNJ", "NVO"] # List of tickers to analyze
     strike_price = None # If None, will assume At-The-Money (current price)
     days_to_maturity = 30
     simulations = 5000

@@ -8,7 +8,7 @@ class Visualizer:
     """
     
     @staticmethod
-    def plot_paths(df: pl.DataFrame, title: str = "Simulación de precios con caminos de Monte Carlo NVDA", num_paths_to_plot: int = 100):
+    def plot_paths(df: pl.DataFrame, title: str = "Simulación de precios con caminos de Monte Carlo NVDA", num_paths_to_plot: int = 100, pdf=None):
         """
         Plots the simulated price paths.
         """
@@ -25,23 +25,28 @@ class Visualizer:
         # Extract data for plotting
         data = df.select(cols_to_plot).to_numpy()
         
-        plt.figure(figsize=(10, 6))
+        fig = plt.figure(figsize=(10, 6))
         plt.plot(time, data, lw=1, alpha=0.6)
         plt.title(title)
         plt.xlabel("Tiempo (Años)")
         plt.ylabel("Precio del activo (USD)")
         plt.grid(True, alpha=0.3)
-        plt.show()
+        
+        if pdf:
+            pdf.savefig(fig)
+            plt.close(fig)
+        else:
+            plt.show()
 
     @staticmethod
-    def plot_distribution(df: pl.DataFrame, strike_price: float = None):
+    def plot_distribution(df: pl.DataFrame, strike_price: float = None, pdf=None):
         """
         Plots the histogram of the final prices.
         """
         # Get final prices
         final_prices = df.select(pl.all().exclude("time")).tail(1).to_numpy().flatten()
         
-        plt.figure(figsize=(10, 6))
+        fig = plt.figure(figsize=(10, 6))
         plt.hist(final_prices, bins=50, density=True, alpha=0.7, color='skyblue', edgecolor='black')
         
         if strike_price:
@@ -52,10 +57,15 @@ class Visualizer:
         plt.xlabel("Precio (USD)")
         plt.ylabel("Densidad de probabilidad")
         plt.grid(True, alpha=0.3)
-        plt.show()
+        
+        if pdf:
+            pdf.savefig(fig)
+            plt.close(fig)
+        else:
+            plt.show()
 
     @staticmethod
-    def plot_greeks(spot_prices: np.ndarray, greeks_dict: dict, title: str = "Sensibilidad de los Griegos ante cambios en el precio del activo"):
+    def plot_greeks(spot_prices: np.ndarray, greeks_dict: dict, title: str = "Sensibilidad de los Griegos ante cambios en el precio del activo", pdf=None):
         """
         Plots Delta, Gamma, Vega, Theta, and Rho against spot price.
         """
@@ -82,14 +92,19 @@ class Visualizer:
                 axes[i].axis('off')
                 
         plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-        plt.show()
+        
+        if pdf:
+            pdf.savefig(fig)
+            plt.close(fig)
+        else:
+            plt.show()
 
     @staticmethod
-    def plot_gex_profile(spot_prices: np.ndarray, gex_values: np.ndarray, current_price: float, title: str = "Perfil de Gamma Exposure (GEX)"):
+    def plot_gex_profile(spot_prices: np.ndarray, gex_values: np.ndarray, current_price: float, title: str = "Perfil de Gamma Exposure (GEX)", pdf=None):
         """
         Plots the Gamma Exposure (GEX) against spot price.
         """
-        plt.figure(figsize=(10, 6))
+        fig = plt.figure(figsize=(10, 6))
         plt.plot(spot_prices, gex_values, color='purple', lw=2, label='GEX')
         
         # Highlight current price
@@ -104,4 +119,9 @@ class Visualizer:
         plt.ylabel("GEX ($ Gamma Exposure)")
         plt.legend()
         plt.grid(True, alpha=0.3)
-        plt.show()
+        
+        if pdf:
+            pdf.savefig(fig)
+            plt.close(fig)
+        else:
+            plt.show()

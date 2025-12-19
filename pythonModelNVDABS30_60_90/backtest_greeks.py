@@ -101,6 +101,7 @@ def run_backtest(ticker_symbols=["JPM", "PLTR", "AMD", "RGTI", "NVDA", "TSLA", "
             "Delta PnL": delta_pnl,
             "Gamma PnL": gamma_pnl,
             "Theta PnL": theta_pnl,
+            "PnL_Diff": diff,
             "Diff (Unexp)": diff
         }
         results.append(res)

@@ -1,16 +1,18 @@
 import sys
+import argparse
 from option_pricing.market_data import MarketDataFetcher
 from option_pricing.financial_instruments import Asset, Option, OptionType
 from option_pricing.models import MonteCarloEngine, BlackScholesAnalytical
 from option_pricing.visualization import Visualizer
 
-def main():
+def main(days_to_maturity=None, show_plots=True):
     print("--- Black-Scholes Monte Carlo Simulation ---")
     
     # User Inputs (hardcoded for demonstration, could be arguments)
     ticker_symbol = "NVDA"
     strike_price = None # If None, will assume At-The-Money (current price)
-    days_to_maturity = 30
+    if days_to_maturity is None:
+        days_to_maturity = 30
     simulations = 5000
     
     # 1. Fetch Market Data
@@ -74,10 +76,17 @@ def main():
     print(f"Difference: {error:.4f} ({(error/bs_price)*100:.2f}%)")
     
     # 5. Visualization
-    print("\nGenerating plots...")
-    Visualizer.plot_paths(paths_df, title=f"Monte Carlo Paths for {ticker_symbol}", num_paths_to_plot=200)
-    Visualizer.plot_distribution(paths_df, strike_price=strike_price)
-    print("Done.")
+    if show_plots:
+        print("\nGenerating plots...")
+        Visualizer.plot_paths(paths_df, title=f"Monte Carlo Paths for {ticker_symbol}", num_paths_to_plot=200)
+        Visualizer.plot_distribution(paths_df, strike_price=strike_price)
+        print("Done.")
+    else:
+        print("Skipping plot generation (headless mode).")
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Run option pricing main")
+    parser.add_argument("--days", type=int, default=30, help="Days to maturity (default: 30)")
+    parser.add_argument("--no-plot", action="store_true", help="Run without showing plots (headless)")
+    args = parser.parse_args()
+    main(days_to_maturity=args.days, show_plots=not args.no_plot)

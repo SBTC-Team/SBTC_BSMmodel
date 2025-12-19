@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from option_pricing.financial_instruments import Asset, Option, OptionType
 from option_pricing.models import BlackScholesAnalytical
 
-def run_backtest(ticker_symbols=["NVDA", "AAPL", "MSFT", "TSLA"], days_back=30):
+def run_backtest(ticker_symbols=["JPM", "PLTR", "AMD", "RGTI", "NVDA", "TSLA", "LCID", "RIVN", "ACAD", "WVE", "QS",   "AAP", "MA", "JNJ", "NVO"], days_back=30):
     print(f"\n--- Backtesting Greeks for {len(ticker_symbols)} Tickers ---")
     print(f"Scenario: Bought an ATM Call Option {days_back} days ago.")
     

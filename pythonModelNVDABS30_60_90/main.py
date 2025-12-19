@@ -96,6 +96,9 @@ def main():
             
         except Exception as e:
             print(f"Error processing {ticker}: {e}")
+            import traceback
+            traceback.print_exc()
+            continue
 
     # Final Summary Table
     if results:

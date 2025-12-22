@@ -1,6 +1,7 @@
 import yfinance as yf
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
 from option_pricing.financial_instruments import Asset, Option, OptionType
 from option_pricing.models import BlackScholesAnalytical, MonteCarloEngine
@@ -111,11 +112,86 @@ def run_batch_analysis(tickers=["JPM", "PLTR", "AMD", "RGTI", "NVDA", "TSLA", "L
                     print(f"Avg Volatility (30d): {tdf[tdf['Vol_Window'] == '30d']['Volatility'].mean():.4f}")
                     print(f"Avg Delta (30d): {tdf[tdf['Vol_Window'] == '30d']['Delta'].mean():.4f}")
                     
-                    # 6. Visualization (based on the latest day in the batch)
+                    # 1. Comparison Plots (30d, 60d, 90d Vol vs Realized Value)
+                    print(f"Generating Comparison Plots for {ticker_symbol}...")
+                    
+                    DTE = 30
+                    comparison_rows = []
+                    mc_sim_count = 200 # Faster MC for daily snapshots
+                    
+                    for current_day in date_range:
+                        S0 = float(prices.loc[current_day])
+                        expiry_date_target = current_day + timedelta(days=DTE)
+                        future_prices = prices.loc[current_day:]
+                        
+                        real_val = np.nan
+                        ST = np.nan
+                        if len(future_prices) > 20: 
+                            try:
+                                idx_expiry = future_prices.index.get_indexer([expiry_date_target], method='nearest')[0]
+                                ST = float(future_prices.iloc[idx_expiry])
+                                real_val = max(ST - S0, 0)
+                            except:
+                                pass
+                        
+                        comp_row = {
+                            "Date": current_day, 
+                            "Price": S0, 
+                            "Real_Value": S0 + real_val if not np.isnan(real_val) else np.nan,
+                            "Actual_Future_Price": ST
+                        }
+                        
+                        for win in ["30d", "60d", "90d"]:
+                            # Get the BS price and Vol from our results
+                            res_slice = tdf[(tdf['Date'] == current_day.strftime("%Y-%m-%d")) & (tdf['Vol_Window'] == win)]
+                            if not res_slice.empty:
+                                bs_p = res_slice['BS_Price'].values[0]
+                                vol = res_slice['Volatility'].values[0]
+                                comp_row[f"BS_{win}"] = S0 + bs_p
+                                
+                                # Quick MC price for comparison
+                                try:
+                                    mc_asset = Asset(ticker=ticker_symbol, current_price=S0, volatility=vol, risk_free_rate=0.045)
+                                    mc_opt = Option(asset=mc_asset, strike_price=S0, time_to_maturity=DTE/365.0, option_type=OptionType.CALL)
+                                    mc_engine_fast = MonteCarloEngine(simulations=mc_sim_count, time_steps=DTE)
+                                    mc_p = mc_engine_fast.price_option(mc_opt)
+                                    comp_row[f"MC_{win}"] = S0 + mc_p
+                                except:
+                                    comp_row[f"MC_{win}"] = np.nan
+                            else:
+                                comp_row[f"BS_{win}"] = np.nan
+                                comp_row[f"MC_{win}"] = np.nan
+                                
+                        comparison_rows.append(comp_row)
+                    
+                    cdf = pd.DataFrame(comparison_rows)
+                    
+                    fig_comp, axes = plt.subplots(3, 1, figsize=(12, 18), sharex=True)
+                    fig_comp.suptitle(f"Advanced Model Comparison: {ticker_symbol} (30 DTE)", fontsize=16)
+                    
+                    for i, win in enumerate(["30d", "60d", "90d"]):
+                        ax = axes[i]
+                        ax.plot(cdf['Date'], cdf['Price'], label='Current Spot Price ($)', color='gray', alpha=0.4, linestyle='--')
+                        ax.plot(cdf['Date'], cdf[f"BS_{win}"], label=f'Model Break-even (BS - {win} Vol)', color='blue', linewidth=1.5)
+                        ax.plot(cdf['Date'], cdf[f"MC_{win}"], label=f'Model Break-even (MC - {win} Vol)', color='cyan', linewidth=1.0, linestyle=':')
+                        ax.plot(cdf['Date'], cdf['Real_Value'], label='Realized Intrinsic Value (Spot + IV at T+30)', color='green', linewidth=1.5)
+                        ax.plot(cdf['Date'], cdf['Actual_Future_Price'], label='Actual Future Spot (S_T at T+30)', color='orange', linewidth=1.0, alpha=0.7)
+                        
+                        ax.set_title(f"Comparison using {win} Volatility Lookback", fontsize=12)
+                        ax.legend(fontsize=8, loc='upper left', ncol=2)
+                        ax.grid(True, alpha=0.2)
+                        ax.set_ylabel("Price / Value ($ USD)")
+                    
+                    plt.xlabel("Analysis Date")
+                    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+                    pdf.savefig(fig_comp)
+                    plt.close(fig_comp)
+
+                    # 2. Visualization (based on the latest day in the batch)
                     last_day_price = float(prices.loc[date_range[-1]])
                     last_day_vol = calculate_volatility(prices.loc[:date_range[-1]], 30) # Use 30d vol for plots
                     
-                    print(f"Generating Plots for {ticker_symbol} (using latest data)...")
+                    print(f"Generating Standard Plots for {ticker_symbol} (using latest data)...")
                     
                     # Setup final instrument for plots
                     risk_free_rate = 0.045
@@ -139,8 +215,8 @@ def run_batch_analysis(tickers=["JPM", "PLTR", "AMD", "RGTI", "NVDA", "TSLA", "L
                     # Plotting
                     Visualizer.plot_paths(paths_df, title=f"Monte Carlo Paths: {ticker_symbol}", pdf=pdf)
                     Visualizer.plot_distribution(paths_df, strike_price=last_day_price, pdf=pdf)
-                    Visualizer.plot_greeks(spot_range, greeks_data, title=f"Griegos: {ticker_symbol} (Latest ATM)", pdf=pdf)
-                    Visualizer.plot_gex_profile(spot_range, np.array(greeks_data['gex']), last_day_price, title=f"Perfil GEX: {ticker_symbol}", pdf=pdf)
+                    Visualizer.plot_greeks(spot_range, greeks_data, title=f"Greeks: {ticker_symbol} (Latest ATM)", pdf=pdf)
+                    Visualizer.plot_gex_profile(spot_range, np.array(greeks_data['gex']), last_day_price, title=f"GEX Profile: {ticker_symbol}", pdf=pdf)
     
             except Exception as e:
                 print(f"Error processing {ticker_symbol}: {e}")

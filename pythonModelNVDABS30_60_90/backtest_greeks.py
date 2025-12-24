@@ -9,116 +9,108 @@ from datetime import datetime, timedelta
 from option_pricing.financial_instruments import Asset, Option, OptionType
 from option_pricing.models import BlackScholesAnalytical
 
-def run_backtest(ticker_symbols=["JPM", "PLTR", "AMD", "RGTI", "NVDA", "TSLA", "LCID", "RIVN", "ACAD", "WVE", "QS",   "AAP", "MA", "JNJ", "NVO"], days_back=30):
-    print(f"\n--- Backtesting Greeks for {len(ticker_symbols)} Tickers ---")
-    print(f"Scenario: Bought an ATM Call Option {days_back} days ago.")
+def run_backtest(ticker_symbols=["JPM", "PLTR", "AMD", "RGTI", "NVDA", "TSLA", "LCID", "RIVN", "ACAD", "WVE", "QS", "AAP", "MA", "JNJ", "NVO"]):
+    print(f"\n--- Backtesting Greeks for Maturity Snapshots ---")
     
     results = []
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     
     for ticker_symbol in ticker_symbols:
         print(f"\nProcessing {ticker_symbol}...")
         
-        # 1. Fetch Historical Data
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=days_back)
-        fetch_start = start_date - timedelta(days=60)
-        
         try:
-            data = yf.download(ticker_symbol, start=fetch_start, end=end_date, progress=False)
+            # Fetch enough history
+            fetch_start = today - timedelta(days=361 + 100)
+            data = yf.download(ticker_symbol, start=fetch_start, end=today + timedelta(days=1), progress=False)
+            
             if data.empty:
-                print(f"Error: No data fetched for {ticker_symbol}.")
+                print(f"Error: No data for {ticker_symbol}")
                 continue
-        except Exception as e:
-            print(f"Error fetching data for {ticker_symbol}: {e}")
-            continue
+            
+            if 'Adj Close' in data.columns:
+                prices = data['Adj Close']
+            else:
+                prices = data['Close']
+            
+            if isinstance(prices, pd.DataFrame):
+                prices = prices.iloc[:, 0]
 
-        if 'Adj Close' in data.columns:
-            prices = data['Adj Close']
-        else:
-            prices = data['Close']
+            maturities = [30, 60, 90]
             
-        # Check if MultiIndex and flatten if needed
-        if isinstance(prices, pd.DataFrame):
-            prices = prices.iloc[:, 0]
-            
-        idx_start = prices.index.get_indexer([start_date], method='nearest')[0]
-        real_start_date = prices.index[idx_start]
-        S0 = float(prices.iloc[idx_start])
-        ST = float(prices.iloc[-1])
-        real_end_date = prices.index[-1]
-        
-        price_change = ST - S0
-        
-        # 2. Calculate Inputs for the Model at T0
-        window_data = prices.iloc[idx_start-20:idx_start]
-        log_returns = np.log(window_data / window_data.shift(1)).dropna()
-        volatility = float(log_returns.std() * np.sqrt(252))
-        
-        risk_free_rate = 0.045 # Approx 4.5% risk free rate
-        
-        asset = Asset(
-            ticker=ticker_symbol,
-            current_price=S0,
-            volatility=volatility,
-            risk_free_rate=risk_free_rate
-        )
-        
-        K = S0
-        T_years = days_back / 365.0
-        
-        option = Option(
-            asset=asset,
-            strike_price=K,
-            time_to_maturity=T_years,
-            option_type=OptionType.CALL
-        )
-        
-        # 3. Running the Model at T0
-        premium = BlackScholesAnalytical.calculate_price(option)
-        greeks = BlackScholesAnalytical.calculate_greeks(option)
-        
-        # 4. Actual Results at Expiry (T=0)
-        intrinsic_value = max(ST - K, 0)
-        actual_pnl = intrinsic_value - premium
-        
-        # 5. Greek Attribution
-        delta_pnl = greeks['delta'] * price_change
-        gamma_pnl = 0.5 * greeks['gamma'] * (price_change ** 2)
-        theta_pnl = greeks['theta'] * days_back
-        predicted_pnl = delta_pnl + gamma_pnl + theta_pnl
-        diff = actual_pnl - predicted_pnl
-        
-        # Store results
-        res = {
-            "Ticker": ticker_symbol,
-            "S0": S0,
-            "ST": ST,
-            "Move %": (ST/S0 - 1) * 100,
-            "Premium": premium,
-            "Expiry Val": intrinsic_value,
-            "Actual PnL": actual_pnl,
-            "Predicted PnL": predicted_pnl,
-            "Delta PnL": delta_pnl,
-            "Gamma PnL": gamma_pnl,
-            "Theta PnL": theta_pnl,
-            "PnL_Diff": diff,
-            "Diff (Unexp)": diff
-        }
-        results.append(res)
+            for maturity in maturities:
+                offsets = range(361, maturity - 1, -maturity)
+                
+                for offset in offsets:
+                    analysis_date_target = today - timedelta(days=offset)
+                    expiry_date_target = analysis_date_target + timedelta(days=maturity)
+                    
+                    if expiry_date_target > prices.index[-1]:
+                        continue # Skip if we don't have expiry data yet
+                    
+                    # T0 (Analysis Date)
+                    idx0 = prices.index.get_indexer([analysis_date_target], method='nearest')[0]
+                    t0 = prices.index[idx0]
+                    S0 = float(prices.iloc[idx0])
+                    
+                    # T_expiry (Expiry Date)
+                    idxT = prices.index.get_indexer([expiry_date_target], method='nearest')[0]
+                    tT = prices.index[idxT]
+                    ST = float(prices.iloc[idxT])
+                    
+                    # Volatility at T0 (using 30d window for backtest)
+                    prices_before = prices.loc[:t0]
+                    volatilities = []
+                    for win in [30, 60, 90]:
+                        log_returns = np.log(prices_before.tail(win+1) / prices_before.tail(win+1).shift(1)).dropna()
+                        volatilities.append(log_returns.std() * np.sqrt(252))
+                    
+                    # Use 30d vol for the model Greeks
+                    vol = volatilities[0]
+                    if np.isnan(vol): continue
+
+                    risk_free_rate = 0.045
+                    asset = Asset(ticker=ticker_symbol, current_price=S0, volatility=vol, risk_free_rate=risk_free_rate)
+                    option = Option(asset=asset, strike_price=S0, time_to_maturity=maturity/365.0, option_type=OptionType.CALL)
+                    
+                    premium = BlackScholesAnalytical.calculate_price(option)
+                    greeks = BlackScholesAnalytical.calculate_greeks(option)
+                    
+                    # Actual PnL
+                    intrinsic_value = max(ST - S0, 0)
+                    actual_pnl = intrinsic_value - premium
+                    
+                    # Attribution
+                    price_change = ST - S0
+                    delta_pnl = greeks['delta'] * price_change
+                    gamma_pnl = 0.5 * greeks['gamma'] * (price_change ** 2)
+                    theta_pnl = greeks['theta'] * maturity
+                    predicted_pnl = delta_pnl + gamma_pnl + theta_pnl
+                    diff = actual_pnl - predicted_pnl
+                    
+                    res = {
+                        "Ticker": ticker_symbol,
+                        "Maturity": maturity,
+                        "Analysis_Date": t0.strftime("%Y-%m-%d"),
+                        "Expiry_Date": tT.strftime("%Y-%m-%d"),
+                        "S0": S0,
+                        "ST": ST,
+                        "Premium": premium,
+                        "Actual_PnL": actual_pnl,
+                        "Delta_PnL": delta_pnl,
+                        "Gamma_PnL": gamma_pnl,
+                        "Theta_PnL": theta_pnl,
+                        "PnL_Diff": diff
+                    }
+                    results.append(res)
+                    
+        except Exception as e:
+            print(f"Error processing {ticker_symbol}: {e}")
 
     if results:
         df = pd.DataFrame(results)
-        print("\n" + "="*80)
-        print("BACKTEST GREEKS SUMMARY")
-        print("="*80)
-        print(df.to_string(index=False))
-        print("="*80)
-        
-        # Save to CSV
         output_file = "backtest_results.csv"
         df.to_csv(output_file, index=False)
-        print(f"Results saved to {output_file}")
-        
+        print(f"\nBACKTEST COMPLETE: {len(df)} records saved to {output_file}")
         return df
     else:
         print("No results to display.")
